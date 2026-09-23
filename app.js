@@ -1,5 +1,7 @@
-const $ = id => document.getElementById(id);
-const defaults = [
+function initActivity(root,explore=false){
+const prefix=explore?'explore-':'';
+const $ = id => document.getElementById(prefix+id);
+const defaults = explore?[]:[
   {name:'Iced coffee',x:-3,y:3,color:'#6d7e98'},
   {name:'Hot coffee',x:3,y:3,color:'#cc9460'},
   {name:'Iced tea',x:-3,y:0,color:'#6f9678'},
@@ -8,7 +10,7 @@ const defaults = [
   {name:'Hot milk',x:3,y:-3,color:'#b78282'}
 ];
 const axisIds=['xMin','xMax','yMin','yMax'];
-const storageKey='concept-space-guided-v2';
+const storageKey=explore?'concept-space-explore-v1':'concept-space-guided-v2';
 let animals=structuredClone(defaults), selected=0, solved=false;
 let saved;
 try { saved=JSON.parse(localStorage.getItem(storageKey)); } catch {}
@@ -27,12 +29,12 @@ let arrows=Array.isArray(saved?.arrows)?saved.arrows.filter(a=>validPosition(a?.
 let drawing=true, arrowStart=null;
 const escapeHTML = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Use the activity labels even when loading an older saved map.
-Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>$(id).value=value);
+Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>{$(id).value=explore?(typeof saved?.axes?.[id]==='string'?saved.axes[id].slice(0,32):''):value;});
 let stage=Number.isInteger(saved?.stage) && saved.stage>=0 && saved.stage<=4 ? saved.stage : 0;
 $('prediction').innerHTML += animals.map(a=>`<option>${escapeHTML(a.name)}</option>`).join('');
 $('prediction').value=animals.some(a=>a.name===saved?.prediction)?saved.prediction:'';
 $('reason').value=typeof saved?.reason==='string'?saved.reason:'';
-if(stage>2 && !$('prediction').value)stage=2;
+if(explore)stage=4;else if(stage>2 && !$('prediction').value)stage=2;
 
 const fmt=n=>(Math.abs(n)<0.05?0:n).toFixed(1);
 const px=x=>80+(x+5)*48, py=y=>560-(y+5)*48;
@@ -52,25 +54,26 @@ function draw(){
   html+='</g>';
  }
  animals.forEach((a,i)=>{html+=`<g class="point" data-index="${i}" tabindex="0" role="button" aria-label="${escapeHTML(a.name)}, X ${fmt(a.x)}, Y ${fmt(a.y)}. Use arrow keys to move." aria-pressed="${selected===i}"><circle cx="${px(a.x)}" cy="${py(a.y)}" r="22" fill="transparent"/><circle class="point-ring" cx="${px(a.x)}" cy="${py(a.y)}" r="15" fill="${selected===i?a.color+'20':'none'}" stroke="${selected===i?a.color:'none'}"/><circle cx="${px(a.x)}" cy="${py(a.y)}" r="7" fill="${a.color}" stroke="#fff" stroke-width="2"/><text x="${px(a.x)+(a.x>3?-17:17)}" y="${py(a.y)-13}" text-anchor="${a.x>3?'end':'start'}">${escapeHTML(a.name)}</text></g>`;});
- const focused=document.activeElement?.closest?.('.point')?.dataset.index;
- $('map').innerHTML=html;
- if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`).focus({preventScroll:true});
+ const focused=root.contains(document.activeElement)?document.activeElement?.closest?.('.point')?.dataset.index:undefined;
+ $('map').innerHTML=prefix?html.replace(/id="([^"]+)"/g,(_,id)=>`id="${prefix}${id}"`).replace(/url\(#([^)]+)\)/g,(_,id)=>`url(#${prefix}${id})`):html;
+ if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`)?.focus({preventScroll:true});
  updateEditor();
 }
-function updateEditor(){const a=animals[selected];$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${fmt(a.x)}, ${fmt(a.y)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;document.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
+function updateEditor(){const a=animals[selected];root.querySelector('.coordinate-editor').hidden=!a;if(!a)return;$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${fmt(a.x)}, ${fmt(a.y)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;root.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
 function refreshDrinkChoices(){
  for(const id of ['arrow-from','arrow-to']){const old=$(id).value;$(id).innerHTML=animals.map((a,i)=>`<option value="${i}">${escapeHTML(a.name)}</option>`).join('');$(id).value=animals[+old]?old:(id==='arrow-from'?'0':'1');if(!$(id).value)$(id).value=id==='arrow-from'?'0':'1';}
  const prediction=$('prediction').value;
  $('prediction').innerHTML='<option value="">Choose a drink</option>'+animals.map(a=>`<option>${escapeHTML(a.name)}</option>`).join('');
  $('prediction').value=animals.some(a=>a.name===prediction)?prediction:'';
- $('animal-list').innerHTML=animals.map((a,i)=>`<button class="animal-chip" data-index="${i}" aria-pressed="${i===selected}"><i style="background:${a.color}"></i>${escapeHTML(a.name)}</button>`).join('');
+ $('add-arrow').querySelector('button').disabled=animals.length<2;
+ $('animal-list').innerHTML=animals.length?animals.map((a,i)=>`<button class="animal-chip" data-index="${i}" aria-pressed="${i===selected}"><i style="background:${a.color}"></i>${escapeHTML(a.name)}</button>`).join(''):'<p class="control-hint">Your map is empty. Add your first concept below.</p>';
 }
 refreshDrinkChoices();
 $('add-drink').addEventListener('submit',e=>{
  e.preventDefault();
  const name=$('drink-name').value.trim();
- if(!name||name.length>32){$('drink-status').textContent='Enter a drink name (1–32 characters).';$('drink-name').focus();return;}
- if(animals.some(a=>a.name.toLowerCase()===name.toLowerCase())){$('drink-status').textContent='That drink is already on the map. Choose a different name.';$('drink-name').focus();return;}
+ if(!name||name.length>32){$('drink-status').textContent='Enter a name (1–32 characters).';$('drink-name').focus();return;}
+ if(animals.some(a=>a.name.toLowerCase()===name.toLowerCase())){$('drink-status').textContent='That name is already on the map. Choose a different name.';$('drink-name').focus();return;}
  animals.push({name,x:0,y:0,color:customColors[(animals.length-defaults.length)%customColors.length]});
  selected=animals.length-1;
  refreshDrinkChoices();draw();save();
@@ -81,7 +84,7 @@ $('remove-drink').addEventListener('click',()=>{
  if(selected<defaults.length)return;
  const [removed]=animals.splice(selected,1);selected=0;
  refreshDrinkChoices();
- if(stage>2&&!$('prediction').value)stage=2;
+ if(!explore&&stage>2&&!$('prediction').value)stage=2;
  renderStage();save();$('drink-status').textContent=`${removed.name} removed.`;$('drink-name').focus();
 });
  $('animal-list').addEventListener('click',e=>{const b=e.target.closest('button');if(b){selected=+b.dataset.index;draw();}});
@@ -94,10 +97,34 @@ $('remove-drink').addEventListener('click',()=>{
  $('map').addEventListener('pointerup',endDrag);$('map').addEventListener('pointercancel',endDrag);$('map').addEventListener('lostpointercapture',endDrag);
  $('map').addEventListener('keydown',e=>{if(e.key==='Escape'){arrowStart=null;updateArrowTools();draw();return;}if(stage===4&&drawing&&(e.key==='Enter'||e.key===' ')){const target=e.target.closest('.point');if(target){e.preventDefault();const a=animals[+target.dataset.index];if(arrowStart)addArrow(arrowStart,a);else arrowStart={x:a.x,y:a.y};updateArrowTools();draw();return;}}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(e.key==='Enter'||e.key===' '){e.preventDefault();draw();return;}const moves={ArrowLeft:['x',-0.1],ArrowRight:['x',0.1],ArrowDown:['y',-0.1],ArrowUp:['y',0.1]};if(moves[e.key]){e.preventDefault();if(stage<1&&selected<defaults.length)return;const [axis,delta]=moves[e.key];animals[selected][axis]=Math.round(Math.max(-5,Math.min(5,animals[selected][axis]+delta))*10)/10;draw();save();}});
  $('reset').addEventListener('click',()=>{animals=[...structuredClone(defaults),...animals.slice(defaults.length)];selected=0;solved=false;Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>$(id).value=value);renderStage();save();});
+ if(explore){
+  drawing=false;
+  root.querySelector('h1').textContent='Your concept space';
+  root.querySelector('.lede').textContent='Choose two dimensions. Add concepts. Explore their relationships.';
+  for(const id of ['step-nav','step-count','guide-title','guide-instruction','guide-task','guide-explanation','prediction-panel','research-connection'])$(id).hidden=true;
+  root.querySelector('.guide-actions').hidden=true;root.querySelector('.guide').removeAttribute('aria-labelledby');root.querySelector('.guide').setAttribute('aria-label','Open exploration controls');
+  $('axis-editor').hidden=false;
+  axisIds.forEach(id=>{$('open-'+id).value=$(id).value;$('open-'+id).addEventListener('input',()=>{$(id).value=$('open-'+id).value;draw();save();});});
+  root.querySelector('.controls h2').textContent='Your concepts';
+  root.querySelector('.control-hint').textContent='Add a concept, then drag it or use the sliders.';
+  root.querySelector('.add-drink > label').textContent='Add a concept';
+  $('drink-name').placeholder='e.g. Bicycle';
+  $('remove-drink').textContent='Remove this concept';
+  root.querySelector('.map-heading h2').textContent='Your two-dimensional map';
+  $('reset').hidden=true;
+  root.querySelector('.map-footer > span').innerHTML='<i class="legend-dot"></i> Concept';
+  root.querySelector('.arrow-pair summary').textContent='Or choose two concepts';
+  root.querySelector('.arrow-note').textContent='Arrows keep their coordinates when concepts move.';
+  $('map').setAttribute('aria-label','Open concept map. Select a concept and use arrow keys to move it.');
+  $('x-coordinate').setAttribute('aria-label','Selected concept X coordinate');
+  $('y-coordinate').setAttribute('aria-label','Selected concept Y coordinate');
+  $('arrow-status').textContent='Switch to Draw arrows, then click a start and end point.';
+ }
  renderStage();save();
 
 function renderStage(focus=false){
  arrowStart=null;
+ if(explore){solved=false;stage=4;$('arrow-panel').hidden=false;updateArrowTools();draw();return;}
  const steps=[
   ['Read the map','Each drink is a vector: [temperature, caffeine]. Right means hotter; up means more caffeine. Assume equal servings and the same recipe within each hot/iced pair.','Select iced coffee and hot coffee. Compare their coordinates: what changes, and what stays the same? These numbers are illustrative scores, not measurements.'],
   ['Place and compare','Select iced tea, then hot tea. Compare their coordinates with the coffee pair. Drag a point or use the sliders to try a different placement.','Keep milk low in caffeine, tea in the middle, and coffee higher for this example. Real caffeine varies by preparation. Try adding cold brew, or restore the original positions.'],
@@ -131,10 +158,11 @@ function mapPosition(e){
  if(p.x<80||p.x>560||p.y<80||p.y>560)return null;
  let pos={x:Math.round(((p.x-80)/48-5)*10)/10,y:Math.round(((560-p.y)/48-5)*10)/10};
  const closest=animals.map(a=>({a,d:Math.hypot(a.x-pos.x,a.y-pos.y)})).sort((a,b)=>a.d-b.d)[0];
- if(closest.d<0.4)pos={x:closest.a.x,y:closest.a.y};
+ if(closest&&closest.d<0.4)pos={x:closest.a.x,y:closest.a.y};
  return pos;
 }
 function addArrow(from,to){
+ if(!from||!to){$('arrow-status').textContent='Add two concepts first, or draw directly on the map.';return;}
  if(Math.hypot(to.x-from.x,to.y-from.y)<0.05){$('arrow-status').textContent='Choose a different end point to give the arrow a direction.';return;}
  arrows.push({from:{x:from.x,y:from.y},to:{x:to.x,y:to.y}});arrowStart=null;
  $('arrow-status').textContent=`Arrow ${arrows.length} added: ΔX ${fmt(to.x-from.x)}, ΔY ${fmt(to.y-from.y)}.`;
@@ -142,14 +170,38 @@ function addArrow(from,to){
 }
 function updateArrowTools(){
  $('draw-mode').setAttribute('aria-pressed',drawing);
- $('draw-mode').textContent=drawing?'Draw arrows ✓':'Move drinks ✓';
- $('draw-mode').setAttribute('aria-label',drawing?'Draw arrows active. Switch to move drinks.':'Move drinks active. Switch to draw arrows.');
+ $('draw-mode').textContent=drawing?'Draw arrows ✓':`Move ${explore?'concepts':'drinks'} ✓`;
+ $('draw-mode').setAttribute('aria-label',drawing?'Draw arrows active. Switch to move concepts.':'Move concepts active. Switch to draw arrows.');
  $('map').classList.toggle('drawing',stage===4&&drawing);
  $('cancel-arrow').hidden=!arrowStart;$('clear-arrows').disabled=!arrows.length;
  $('arrow-list').innerHTML=arrows.map((a,i)=>`<li><span><b>${i+1}.</b> ΔX ${fmt(a.to.x-a.from.x)} · ΔY ${fmt(a.to.y-a.from.y)}<small>(${fmt(a.from.x)}, ${fmt(a.from.y)}) → (${fmt(a.to.x)}, ${fmt(a.to.y)})</small></span><button class="quiet" data-remove="${i}" aria-label="Remove arrow ${i+1}">Remove</button></li>`).join('');
 }
-$('draw-mode').addEventListener('click',()=>{drawing=!drawing;arrowStart=null;$('arrow-status').textContent=drawing?'Click a start point, then an end point on the map.':'Drag drinks to move them. Switch back to draw more arrows.';updateArrowTools();draw();});
+$('draw-mode').addEventListener('click',()=>{drawing=!drawing;arrowStart=null;$('arrow-status').textContent=drawing?'Click a start point, then an end point on the map.':'Drag points to move them. Switch back to draw more arrows.';updateArrowTools();draw();});
 $('cancel-arrow').addEventListener('click',()=>{arrowStart=null;$('arrow-status').textContent='Start canceled. Click a new start point.';updateArrowTools();draw();});
 $('clear-arrows').addEventListener('click',()=>{arrows=[];arrowStart=null;$('arrow-status').textContent='Arrows cleared.';updateArrowTools();draw();save();});
 $('arrow-list').addEventListener('click',e=>{const button=e.target.closest('[data-remove]');if(!button)return;arrows.splice(+button.dataset.remove,1);$('arrow-status').textContent='Arrow removed.';updateArrowTools();draw();save();$('clear-arrows').focus();});
 $('add-arrow').addEventListener('submit',e=>{e.preventDefault();addArrow(animals[+$('arrow-from').value],animals[+$('arrow-to').value]);});
+
+return {cancelInteraction(){arrowStart=null;dragging=null;updateArrowTools();draw();}};
+}
+
+// Clone the unchanged guided layout before initializing either independent activity.
+const guidedPanel=document.getElementById('guided-panel');
+const explorePanel=guidedPanel.cloneNode(true);
+explorePanel.id='explore-panel';explorePanel.hidden=true;explorePanel.setAttribute('aria-labelledby','explore-tab');
+explorePanel.querySelectorAll('[id]').forEach(el=>{el.id='explore-'+el.id;});
+explorePanel.querySelectorAll('[for],[aria-describedby],[aria-labelledby]').forEach(el=>{
+ for(const attr of ['for','aria-describedby','aria-labelledby'])if(el.hasAttribute(attr))el.setAttribute(attr,el.getAttribute(attr).split(' ').map(id=>'explore-'+id).join(' '));
+});
+guidedPanel.after(explorePanel);
+const guidedActivity=initActivity(guidedPanel),exploreActivity=initActivity(explorePanel,true);
+const tabs=[document.getElementById('guided-tab'),document.getElementById('explore-tab')];
+function activateTab(index){
+ guidedActivity.cancelInteraction();exploreActivity.cancelInteraction();
+ guidedPanel.hidden=index!==0;explorePanel.hidden=index!==1;
+ tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',i===index);tab.tabIndex=i===index?0:-1;});
+}
+tabs.forEach((tab,index)=>{
+ tab.addEventListener('click',()=>activateTab(index));
+ tab.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?1:1-index;activateTab(next);tabs[next].focus();});
+});

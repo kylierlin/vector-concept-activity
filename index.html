@@ -10,9 +10,20 @@
 </head>
 <body>
 
-  <main>
+  <nav class="activity-tabs" role="tablist" aria-label="Activity mode">
+    <button id="guided-tab" role="tab" aria-selected="true" aria-controls="guided-panel" tabindex="0">Guided activity</button>
+    <button id="explore-tab" role="tab" aria-selected="false" aria-controls="explore-panel" tabindex="-1">Open exploration</button>
+  </nav>
+  <main id="guided-panel" role="tabpanel" aria-labelledby="guided-tab">
     <section class="intro"><h1>Concepts as vectors</h1><p class="lede">Place drinks, predict a relationship, and test your map. · 5 steps</p></section>
     <section class="guide card" aria-labelledby="guide-title">
+      <div id="axis-editor" hidden>
+        <h2>Define your dimensions</h2>
+        <p>Give each axis two endpoints. For example: small ↔ large and natural ↔ artificial.</p>
+        <fieldset><legend>X · horizontal</legend><div class="axis-fields"><label>Left (−5)<input id="open-xMin" maxlength="32" placeholder="e.g. Small"></label><label>Right (+5)<input id="open-xMax" maxlength="32" placeholder="e.g. Large"></label></div></fieldset>
+        <fieldset><legend>Y · vertical</legend><div class="axis-fields"><label>Bottom (−5)<input id="open-yMin" maxlength="32" placeholder="e.g. Natural"></label><label>Top (+5)<input id="open-yMax" maxlength="32" placeholder="e.g. Artificial"></label></div></fieldset>
+        <p>Place your concepts, then draw arrows to compare relationships. Changing labels leaves positions unchanged.</p>
+      </div>
       <nav id="step-nav" aria-label="Activity steps"></nav>
       <p class="eyebrow" id="step-count"></p><h2 id="guide-title" tabindex="-1"></h2>
       <p id="guide-instruction"></p><p id="guide-task" class="guide-task"></p>

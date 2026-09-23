@@ -15,6 +15,14 @@ Open `index.html` in a browser, or serve this directory with `python3 -m http.se
 
 Relative asset paths support repository and custom-domain sites. The interface uses system fonts and needs no external font downloads. No server, credentials, or API keys are needed.
 
+## Two activity tabs
+
+**Guided activity** retains the five-step drink exercise and existing saved progress.
+
+**Open exploration** starts with an empty map. Define the negative and positive endpoints of X and Y, add your own concepts, and position them by dragging, sliders, or arrow keys. All concepts in this tab can be removed. Switch from Move concepts to Draw arrows to select two locations, or choose two concepts from the endpoint dropdowns. Arrows show ΔX and ΔY and retain their coordinates when concepts move. Renaming axes does not reposition points.
+
+Tabs use independent local-storage keys (`concept-space-guided-v2` and `concept-space-explore-v1`). Switching tabs preserves both maps and cancels unfinished arrow selections. Use Left/Right, Home, or End while focused on a tab to switch with the keyboard. Everything remains a static site; no additional files or services are needed for GitHub Pages.
+
 ## Classroom flow
 
 The five-step guide reveals controls and prompts as students progress. Back revisits earlier steps, and progress resumes on reload.
