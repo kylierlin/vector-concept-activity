@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ed">
+  <title>Concept Space — a vector playground</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+
+  <main>
+    <section class="intro"><h1>Concepts as vectors</h1><p class="lede">Place drinks, predict a relationship, and test your map. · 5 steps</p></section>
+    <section class="guide card" aria-labelledby="guide-title">
+      <nav id="step-nav" aria-label="Activity steps"></nav>
+      <p class="eyebrow" id="step-count"></p><h2 id="guide-title" tabindex="-1"></h2>
+      <p id="guide-instruction"></p><p id="guide-task" class="guide-task"></p>
+      <p id="guide-explanation" hidden>Matching arrows must have the same direction and length because they represent the same change in both temperature and caffeine. Moving only hot tea upward changes the caffeine difference, so the predicted X shifts upward and no longer lands on iced tea.</p>
+      <div id="prediction-panel" hidden><label for="prediction">My prediction: the missing drink is…</label><select id="prediction"><option value="">Choose a drink</option></select><label for="reason">Why do you expect that relationship?</label><textarea id="reason" rows="2" placeholder="The change from iced coffee to hot coffee is…"></textarea></div>
+      <section id="arrow-panel" hidden aria-label="Your arrows">
+        <div class="arrow-tools"><button id="draw-mode" type="button" class="primary" aria-pressed="true">Draw arrows</button><button id="cancel-arrow" type="button" class="quiet" hidden>Cancel start</button><button id="clear-arrows" type="button" class="quiet">Clear arrows</button></div>
+        <p id="arrow-status" role="status">Click a start point, then an end point on the map.</p>
+        <details class="arrow-pair"><summary>Or choose two drinks</summary><form id="add-arrow"><label for="arrow-from">From</label><select id="arrow-from"></select><label for="arrow-to">To</label><select id="arrow-to"></select><button type="submit" class="primary">Add arrow</button></form></details>
+        <ol id="arrow-list" aria-label="Drawn arrows"></ol>
+        <p class="arrow-note">Arrows keep their coordinates when drinks move.</p>
+      </section>
+      <div class="guide-actions"><button id="previous" class="quiet">← Back</button><span id="guide-status" role="status"></span><button id="next" class="primary">Next step →</button></div>
+    </section>
+    <div class="workspace">
+      <aside class="controls card">
+        <h2>Your drinks</h2>
+        <p class="control-hint">Select a drink to inspect or move it.</p>
+        <div hidden><input id="xMin" value="Cold"><input id="xMax" value="Hot"><input id="yMin" value="No caffeine"><input id="yMax" value="More caffeine"></div>
+        <div id="animal-list" class="animal-list"></div>
+        <form id="add-drink" class="add-drink">
+          <label for="drink-name">Add your own drink</label>
+          <div class="add-drink-row"><input id="drink-name" name="drink" maxlength="32" required placeholder="e.g. Cold brew" autocomplete="off" aria-describedby="drink-help drink-status"><button class="primary" type="submit">Add +</button></div>
+          <p id="drink-help">Starts at (0, 0). Drag or use the sliders to place it.</p>
+          <p id="drink-status" role="status" aria-live="polite"></p>
+        </form>
+        <div class="coordinate-editor"><div><strong id="selected-name">Iced coffee</strong><span id="coordinates"></span></div><label>X <input id="x-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink X coordinate"></label><label>Y <input id="y-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink Y coordinate"></label><button id="remove-drink" type="button" class="quiet" hidden>Remove this drink</button></div>
+      </aside>
+      <div class="map-region">
+      <section id="research-connection" class="research card" hidden aria-labelledby="research-title">
+        <h2 id="research-title">Matching arrows illustrates how vector operations can express analogies, as in Piantodosi et al (2024)</h2>
+        <p>Here, drinks are vectors and arrows describe changes between them. Matching arrows illustrates how vector operations can express analogies. In <a href="https://doi.org/10.1016/j.tics.2024.06.011" target="_blank" rel="noopener noreferrer">Why concepts are (probably) vectors</a>, Piantadosi and colleagues argue that vector representations can support concepts, including structured relationships and reasoning.</p>
+      </section>
+      <section class="map-card card"><div class="map-heading"><div><h2>Temperature × caffeine</h2></div><button id="reset" class="quiet">Restore example ↺</button></div>
+        <div class="map-container"><svg id="map" tabindex="0" viewBox="10 20 620 600" role="group" aria-label="Interactive concept map. Select drink points and use arrow keys to move them."></svg></div>
+        <div class="map-footer"><span><i class="legend-dot"></i> Drink concept</span><span class="analogy-legend"><i></i> Relationship vector</span><span>Drag to explore · arrow keys to fine-tune</span></div>
+      </section>
+</div>
+    </div>
+  </main>
+</body>
+</html>

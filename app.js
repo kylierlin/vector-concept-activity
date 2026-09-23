@@ -1,0 +1,155 @@
+const $ = id => document.getElementById(id);
+const defaults = [
+  {name:'Iced coffee',x:-3,y:3,color:'#6d7e98'},
+  {name:'Hot coffee',x:3,y:3,color:'#cc9460'},
+  {name:'Iced tea',x:-3,y:0,color:'#6f9678'},
+  {name:'Hot tea',x:3,y:0,color:'#9a7794'},
+  {name:'Iced milk',x:-3,y:-3,color:'#d2ad43'},
+  {name:'Hot milk',x:3,y:-3,color:'#b78282'}
+];
+const axisIds=['xMin','xMax','yMin','yMax'];
+const storageKey='concept-space-guided-v2';
+let animals=structuredClone(defaults), selected=0, solved=false;
+let saved;
+try { saved=JSON.parse(localStorage.getItem(storageKey)); } catch {}
+const customColors=['#528b89','#9470a5','#b5774f','#7e8d40'];
+const validPosition=a=>a && Number.isFinite(a.x) && Number.isFinite(a.y) && Math.abs(a.x)<=5 && Math.abs(a.y)<=5;
+if(Array.isArray(saved?.animals)){
+  animals=defaults.map((a,i)=>saved.animals[i]?.name===a.name && validPosition(saved.animals[i])?{...a,x:saved.animals[i].x,y:saved.animals[i].y}:{...a});
+  for(const a of saved.animals.slice(defaults.length)){
+    if(!validPosition(a)||typeof a.name!=='string')continue;
+    const name=a.name.trim();
+    if(!name||name.length>32||animals.some(v=>v.name.toLowerCase()===name.toLowerCase()))continue;
+    animals.push({name,x:a.x,y:a.y,color:customColors[(animals.length-defaults.length)%customColors.length]});
+  }
+}
+let arrows=Array.isArray(saved?.arrows)?saved.arrows.filter(a=>validPosition(a?.from)&&validPosition(a?.to)&&Math.hypot(a.to.x-a.from.x,a.to.y-a.from.y)>0).map(a=>({from:{x:a.from.x,y:a.from.y},to:{x:a.to.x,y:a.to.y}})):[];
+let drawing=true, arrowStart=null;
+const escapeHTML = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Use the activity labels even when loading an older saved map.
+Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>$(id).value=value);
+let stage=Number.isInteger(saved?.stage) && saved.stage>=0 && saved.stage<=4 ? saved.stage : 0;
+$('prediction').innerHTML += animals.map(a=>`<option>${escapeHTML(a.name)}</option>`).join('');
+$('prediction').value=animals.some(a=>a.name===saved?.prediction)?saved.prediction:'';
+$('reason').value=typeof saved?.reason==='string'?saved.reason:'';
+if(stage>2 && !$('prediction').value)stage=2;
+
+const fmt=n=>(Math.abs(n)<0.05?0:n).toFixed(1);
+const px=x=>80+(x+5)*48, py=y=>560-(y+5)*48;
+function snapshot(){return {arrows,stage,prediction:$('prediction').value,reason:$('reason').value,animals,axes:Object.fromEntries(axisIds.map(id=>[id,$(id).value])),...(typeof saved?.reflection==='string'?{reflection:saved.reflection}:{})};}
+function save(){try{localStorage.setItem(storageKey,JSON.stringify(snapshot()));}catch{/* The activity also works without browser storage. */}}
+function analogy(){const a=animals[0],b=animals[1],d=animals[3];return {a,b,d,x:d.x-b.x+a.x,y:d.y-b.y+a.y};}
+function line(x1,y1,x2,y2,attributes=''){return `<line x1="${px(x1)}" y1="${py(y1)}" x2="${px(x2)}" y2="${py(y2)}" ${attributes}/>`;}
+function draw(){
+ let html='<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ca713d"/></marker><marker id="custom-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#256b52"/></marker><clipPath id="plot-clip"><rect x="80" y="80" width="480" height="480"/></clipPath></defs><rect x="80" y="80" width="480" height="480" rx="2" fill="#f6f8f2"/>';
+ for(let n=-5;n<=5;n++){html+=line(n,-5,n,5,`stroke="${n===0?'#aab7a5':'#e2e8dc'}" stroke-width="${n===0?1.5:1}"`)+line(-5,n,5,n,`stroke="${n===0?'#aab7a5':'#e2e8dc'}" stroke-width="${n===0?1.5:1}"`);if(n!==0)html+=`<text x="${px(n)}" y="${py(0)+17}" text-anchor="middle" font-size="9">${n}</text><text x="${px(0)-10}" y="${py(n)+3}" text-anchor="end" font-size="9">${n}</text>`;}
+ html+=`<text x="320" y="43" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('yMax').value || '+Y')}</text><text x="320" y="606" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('yMin').value || '−Y')}</text><text transform="translate(28 320) rotate(-90)" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('xMin').value || '−X')}</text><text transform="translate(612 320) rotate(90)" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('xMax').value || '+X')}</text>`;
+ if(solved){const {a,b,d,x,y}=analogy();$('guide-status').textContent=`Predicted X = (${fmt(x)}, ${fmt(y)})${Math.abs(x)>5||Math.abs(y)>5?' · outside the visible grid':''}.`;html+='<g clip-path="url(#plot-clip)">'+line(a.x,a.y,b.x,b.y,'stroke="#ca713d" stroke-width="2.5" marker-end="url(#arrow)"')+line(x,y,d.x,d.y,'stroke="#ca713d" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#arrow)"')+'</g>';if(Math.abs(x)<=5&&Math.abs(y)<=5)html+=`<circle cx="${px(x)}" cy="${py(y)}" r="17" fill="#fbf1e4" stroke="#ca713d" stroke-dasharray="4 3"/><text x="${px(x)}" y="${py(y)+5}" text-anchor="middle" font-size="14" style="fill:#a35428">X</text>`;}
+ if(stage===4){
+  html+='<g pointer-events="none">';
+  arrows.forEach((a,i)=>{html+=line(a.from.x,a.from.y,a.to.x,a.to.y,'stroke="#256b52" stroke-width="3" marker-end="url(#custom-arrow)"');html+=`<text x="${px((a.from.x+a.to.x)/2)+8}" y="${py((a.from.y+a.to.y)/2)-8}" font-size="13" style="fill:#256b52;paint-order:stroke;stroke:white;stroke-width:4px">${i+1}</text>`;});
+  if(arrowStart)html+=`<circle cx="${px(arrowStart.x)}" cy="${py(arrowStart.y)}" r="11" fill="none" stroke="#256b52" stroke-width="3"/><line id="arrow-preview" x1="${px(arrowStart.x)}" y1="${py(arrowStart.y)}" x2="${px(arrowStart.x)}" y2="${py(arrowStart.y)}" stroke="#256b52" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#custom-arrow)"/>`;
+  html+='</g>';
+ }
+ animals.forEach((a,i)=>{html+=`<g class="point" data-index="${i}" tabindex="0" role="button" aria-label="${escapeHTML(a.name)}, X ${fmt(a.x)}, Y ${fmt(a.y)}. Use arrow keys to move." aria-pressed="${selected===i}"><circle cx="${px(a.x)}" cy="${py(a.y)}" r="22" fill="transparent"/><circle class="point-ring" cx="${px(a.x)}" cy="${py(a.y)}" r="15" fill="${selected===i?a.color+'20':'none'}" stroke="${selected===i?a.color:'none'}"/><circle cx="${px(a.x)}" cy="${py(a.y)}" r="7" fill="${a.color}" stroke="#fff" stroke-width="2"/><text x="${px(a.x)+(a.x>3?-17:17)}" y="${py(a.y)-13}" text-anchor="${a.x>3?'end':'start'}">${escapeHTML(a.name)}</text></g>`;});
+ const focused=document.activeElement?.closest?.('.point')?.dataset.index;
+ $('map').innerHTML=html;
+ if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`).focus({preventScroll:true});
+ updateEditor();
+}
+function updateEditor(){const a=animals[selected];$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${fmt(a.x)}, ${fmt(a.y)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;document.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
+function refreshDrinkChoices(){
+ for(const id of ['arrow-from','arrow-to']){const old=$(id).value;$(id).innerHTML=animals.map((a,i)=>`<option value="${i}">${escapeHTML(a.name)}</option>`).join('');$(id).value=animals[+old]?old:(id==='arrow-from'?'0':'1');if(!$(id).value)$(id).value=id==='arrow-from'?'0':'1';}
+ const prediction=$('prediction').value;
+ $('prediction').innerHTML='<option value="">Choose a drink</option>'+animals.map(a=>`<option>${escapeHTML(a.name)}</option>`).join('');
+ $('prediction').value=animals.some(a=>a.name===prediction)?prediction:'';
+ $('animal-list').innerHTML=animals.map((a,i)=>`<button class="animal-chip" data-index="${i}" aria-pressed="${i===selected}"><i style="background:${a.color}"></i>${escapeHTML(a.name)}</button>`).join('');
+}
+refreshDrinkChoices();
+$('add-drink').addEventListener('submit',e=>{
+ e.preventDefault();
+ const name=$('drink-name').value.trim();
+ if(!name||name.length>32){$('drink-status').textContent='Enter a drink name (1–32 characters).';$('drink-name').focus();return;}
+ if(animals.some(a=>a.name.toLowerCase()===name.toLowerCase())){$('drink-status').textContent='That drink is already on the map. Choose a different name.';$('drink-name').focus();return;}
+ animals.push({name,x:0,y:0,color:customColors[(animals.length-defaults.length)%customColors.length]});
+ selected=animals.length-1;
+ refreshDrinkChoices();draw();save();
+ $('drink-name').value='';$('drink-status').textContent=`${name} added at (0, 0). Use the sliders to position it.`;
+ $('x-coordinate').focus();
+});
+$('remove-drink').addEventListener('click',()=>{
+ if(selected<defaults.length)return;
+ const [removed]=animals.splice(selected,1);selected=0;
+ refreshDrinkChoices();
+ if(stage>2&&!$('prediction').value)stage=2;
+ renderStage();save();$('drink-status').textContent=`${removed.name} removed.`;$('drink-name').focus();
+});
+ $('animal-list').addEventListener('click',e=>{const b=e.target.closest('button');if(b){selected=+b.dataset.index;draw();}});
+ for(const axis of ['x','y'])$(axis+'-coordinate').addEventListener('input',e=>{if(stage<1&&selected<defaults.length)return;animals[selected][axis]=+e.target.value;draw();save();});
+ axisIds.forEach(id=>$(id).addEventListener('input',()=>{draw();save();}));
+ let dragging=null;
+ $('map').addEventListener('pointerdown',e=>{if(stage===4&&drawing){if(e.button!==0)return;const pos=mapPosition(e);if(!pos)return;e.preventDefault();$('map').focus();if(!arrowStart){arrowStart=pos;$('arrow-status').textContent='Start selected. Click the end point (Esc to cancel).';}else{addArrow(arrowStart,pos);}updateArrowTools();draw();return;}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(stage<1&&selected<defaults.length){draw();return;}dragging={index:selected,id:e.pointerId};$('map').setPointerCapture(e.pointerId);draw();e.preventDefault();});
+ $('map').addEventListener('pointermove',e=>{if(stage===4&&drawing&&arrowStart){const pos=mapPosition(e),preview=$('arrow-preview');if(pos&&preview){preview.setAttribute('x2',px(pos.x));preview.setAttribute('y2',py(pos.y));}return;}if(!dragging||dragging.id!==e.pointerId)return;const point=new DOMPoint(e.clientX,e.clientY).matrixTransform($('map').getScreenCTM().inverse());animals[dragging.index].x=Math.round(Math.max(-5,Math.min(5,(point.x-80)/48-5))*10)/10;animals[dragging.index].y=Math.round(Math.max(-5,Math.min(5,(560-point.y)/48-5))*10)/10;draw();});
+ function endDrag(){if(dragging){dragging=null;save();}}
+ $('map').addEventListener('pointerup',endDrag);$('map').addEventListener('pointercancel',endDrag);$('map').addEventListener('lostpointercapture',endDrag);
+ $('map').addEventListener('keydown',e=>{if(e.key==='Escape'){arrowStart=null;updateArrowTools();draw();return;}if(stage===4&&drawing&&(e.key==='Enter'||e.key===' ')){const target=e.target.closest('.point');if(target){e.preventDefault();const a=animals[+target.dataset.index];if(arrowStart)addArrow(arrowStart,a);else arrowStart={x:a.x,y:a.y};updateArrowTools();draw();return;}}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(e.key==='Enter'||e.key===' '){e.preventDefault();draw();return;}const moves={ArrowLeft:['x',-0.1],ArrowRight:['x',0.1],ArrowDown:['y',-0.1],ArrowUp:['y',0.1]};if(moves[e.key]){e.preventDefault();if(stage<1&&selected<defaults.length)return;const [axis,delta]=moves[e.key];animals[selected][axis]=Math.round(Math.max(-5,Math.min(5,animals[selected][axis]+delta))*10)/10;draw();save();}});
+ $('reset').addEventListener('click',()=>{animals=[...structuredClone(defaults),...animals.slice(defaults.length)];selected=0;solved=false;Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>$(id).value=value);renderStage();save();});
+ renderStage();save();
+
+function renderStage(focus=false){
+ arrowStart=null;
+ const steps=[
+  ['Read the map','Each drink is a vector: [temperature, caffeine]. Right means hotter; up means more caffeine. Assume equal servings and the same recipe within each hot/iced pair.','Select iced coffee and hot coffee. Compare their coordinates: what changes, and what stays the same? These numbers are illustrative scores, not measurements.'],
+  ['Place and compare','Select iced tea, then hot tea. Compare their coordinates with the coffee pair. Drag a point or use the sliders to try a different placement.','Keep milk low in caffeine, tea in the middle, and coffee higher for this example. Real caffeine varies by preparation. Try adding cold brew, or restore the original positions.'],
+  ['Make a prediction','Complete the analogy before seeing the calculation: iced coffee is to hot coffee as X is to hot tea.','What changes from iced coffee to hot coffee? What stays the same? Choose the drink that could undergo that same change to become hot tea.'],
+  ['Reveal, then experiment','The solid arrow shows the change from iced coffee to hot coffee. The dashed arrow repeats that change, ending at hot tea. Its starting point is the predicted X.','Now move hot tea upward by 1 unit, leaving iced tea in place. Watch X move. Does the analogy still land on iced tea?'],
+  ['Draw your own arrows','Click a start point, then an end point on the map. Points near a drink snap to its position. Switch to Move drinks to reposition concepts.','Draw a cold-to-hot change for two different drinks. Compare ΔX and ΔY: do the arrows express the same relationship? You can also choose a pair of drinks below.'],
+ ];
+ const [title,instruction,task]=steps[stage];
+ $('step-count').textContent=`STEP ${stage+1} OF 5`;
+ $('guide-title').textContent=title;$('guide-instruction').textContent=instruction;$('guide-task').textContent=task;
+ $('step-nav').innerHTML=steps.map((s,i)=>`<span ${i===stage?'aria-current="step"':''} class="${i<stage?'completed':''}">${i+1}. ${['Read','Place','Predict','Test','Draw'][i]}</span>`).join('');
+ $('guide-explanation').hidden=stage!==3;$('prediction-panel').hidden=stage!==2;$('research-connection').hidden=stage<3;
+ solved=stage===3;
+ $('previous').disabled=stage===0;$('next').hidden=stage===4;
+ $('next').disabled=stage===2&&!$('prediction').value;
+ $('next').textContent=stage===2?'Reveal the vectors →':'Next step →';
+ $('guide-status').textContent=stage===2&&!$('prediction').value?'Choose a prediction to continue.':stage===4?'Final step · compare the arrows you create.':'';
+ axisIds.forEach(id=>$(id).disabled=true);
+ for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0;
+ $('map').classList.toggle('read-only',stage===0);
+ $('arrow-panel').hidden=stage!==4;updateArrowTools();
+ draw();if(focus)$('guide-title').focus();
+}
+$('next').addEventListener('click',()=>{if(stage===2&&!$('prediction').value)return;stage=Math.min(4,stage+1);renderStage(true);save();});
+$('previous').addEventListener('click',()=>{stage=Math.max(0,stage-1);renderStage(true);save();});
+$('prediction').addEventListener('change',()=>{renderStage();save();});
+$('reason').addEventListener('input',save);
+
+function mapPosition(e){
+ const p=new DOMPoint(e.clientX,e.clientY).matrixTransform($('map').getScreenCTM().inverse());
+ if(p.x<80||p.x>560||p.y<80||p.y>560)return null;
+ let pos={x:Math.round(((p.x-80)/48-5)*10)/10,y:Math.round(((560-p.y)/48-5)*10)/10};
+ const closest=animals.map(a=>({a,d:Math.hypot(a.x-pos.x,a.y-pos.y)})).sort((a,b)=>a.d-b.d)[0];
+ if(closest.d<0.4)pos={x:closest.a.x,y:closest.a.y};
+ return pos;
+}
+function addArrow(from,to){
+ if(Math.hypot(to.x-from.x,to.y-from.y)<0.05){$('arrow-status').textContent='Choose a different end point to give the arrow a direction.';return;}
+ arrows.push({from:{x:from.x,y:from.y},to:{x:to.x,y:to.y}});arrowStart=null;
+ $('arrow-status').textContent=`Arrow ${arrows.length} added: ΔX ${fmt(to.x-from.x)}, ΔY ${fmt(to.y-from.y)}.`;
+ updateArrowTools();draw();save();
+}
+function updateArrowTools(){
+ $('draw-mode').setAttribute('aria-pressed',drawing);
+ $('draw-mode').textContent=drawing?'Draw arrows ✓':'Move drinks ✓';
+ $('draw-mode').setAttribute('aria-label',drawing?'Draw arrows active. Switch to move drinks.':'Move drinks active. Switch to draw arrows.');
+ $('map').classList.toggle('drawing',stage===4&&drawing);
+ $('cancel-arrow').hidden=!arrowStart;$('clear-arrows').disabled=!arrows.length;
+ $('arrow-list').innerHTML=arrows.map((a,i)=>`<li><span><b>${i+1}.</b> ΔX ${fmt(a.to.x-a.from.x)} · ΔY ${fmt(a.to.y-a.from.y)}<small>(${fmt(a.from.x)}, ${fmt(a.from.y)}) → (${fmt(a.to.x)}, ${fmt(a.to.y)})</small></span><button class="quiet" data-remove="${i}" aria-label="Remove arrow ${i+1}">Remove</button></li>`).join('');
+}
+$('draw-mode').addEventListener('click',()=>{drawing=!drawing;arrowStart=null;$('arrow-status').textContent=drawing?'Click a start point, then an end point on the map.':'Drag drinks to move them. Switch back to draw more arrows.';updateArrowTools();draw();});
+$('cancel-arrow').addEventListener('click',()=>{arrowStart=null;$('arrow-status').textContent='Start canceled. Click a new start point.';updateArrowTools();draw();});
+$('clear-arrows').addEventListener('click',()=>{arrows=[];arrowStart=null;$('arrow-status').textContent='Arrows cleared.';updateArrowTools();draw();save();});
+$('arrow-list').addEventListener('click',e=>{const button=e.target.closest('[data-remove]');if(!button)return;arrows.splice(+button.dataset.remove,1);$('arrow-status').textContent='Arrow removed.';updateArrowTools();draw();save();$('clear-arrows').focus();});
+$('add-arrow').addEventListener('submit',e=>{e.preventDefault();addArrow(animals[+$('arrow-from').value],animals[+$('arrow-to').value]);});
