@@ -52,6 +52,56 @@ function line(x1,y1,x2,y2,attributes=''){return `<line x1="${px(x1)}" y1="${py(y
 function project(a){const t=viewAngle*Math.PI/180,z=a.z??0;return {x:320+30*(a.x*Math.cos(t)-z*Math.sin(t)),y:320-30*(a.y+0.45*(a.x*Math.sin(t)+z*Math.cos(t)))};}
 function unproject(p,z=0){const t=viewAngle*Math.PI/180;const x=((p.x-320)/30+z*Math.sin(t))/Math.cos(t);return {x,y:(320-p.y)/30-0.45*(x*Math.sin(t)+z*Math.cos(t)),z};}
 function segment(a,b,attrs=''){const p=project(a),q=project(b);return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" ${attrs}/>`;}
+// Find the nearest free label position without changing concept coordinates.
+function labelPosition(point,width,height,occupied){
+ const bounds={left:52,right:588,top:62,bottom:580};
+ const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
+ const overlap=box=>occupied.reduce((sum,b)=>sum+Math.max(0,Math.min(box.x+box.width,b.x+b.width)-Math.max(box.x,b.x))*Math.max(0,Math.min(box.y+box.height,b.y+b.height)-Math.max(box.y,b.y)),0);
+ let best=null,bestScore=Infinity;
+ function consider(x,y){
+  const box={x:clamp(x,bounds.left,bounds.right-width),y:clamp(y,bounds.top,bounds.bottom-height),width,height};
+  const distance=Math.hypot(Math.max(box.x-point.x,0,point.x-box.x-width),Math.max(box.y-point.y,0,point.y-box.y-height));
+  const score=overlap(box)*10000+distance;
+  if(score<bestScore){best=box;bestScore=score;}
+  return overlap(box)===0;
+ }
+ for(let radius=0;radius<=520;radius+=height+6){
+  let free=false;
+  for(const x of [point.x+17,point.x-width-17,point.x-width/2]){
+   free=consider(x,point.y-height-10-radius)||free;
+   free=consider(x,point.y+10+radius)||free;
+  }
+  if(free)return best;
+ }
+ // Dense clusters may need an open position farther to the side.
+ for(let y=bounds.top;y<=bounds.bottom-height;y+=height+6)for(let x=bounds.left;x<=bounds.right-width;x+=16)consider(x,y);
+ return best;
+}
+function layoutConceptLabels(){
+ const map=$('map');
+ const groups=[...map.querySelectorAll('.point')];
+ const points=animals.map(a=>threeD?project(a):{x:px(a.x),y:py(a.y)});
+ const occupied=points.map(p=>({x:p.x-12,y:p.y-12,width:24,height:24}));
+ // Keep axis labels and arrow annotations readable too.
+ for(const text of map.querySelectorAll('text')){
+  if(text.closest('.point')||text.hasAttribute('transform'))continue;
+  const box=text.getBBox();if(box.width)occupied.push({x:box.x-4,y:box.y-4,width:box.width+8,height:box.height+8});
+ }
+ for(const group of groups){
+  const text=group.querySelector('text'),point=points[+group.dataset.index];
+  const measured=text.getBBox(),width=(measured.width||text.textContent.length*8)+8,height=(measured.height||17)+8;
+  const box=labelPosition(point,width,height,occupied);occupied.push(box);
+  text.setAttribute('text-anchor','start');text.setAttribute('x',box.x+4);
+  text.setAttribute('y',box.y+4+(measured.height?Number(text.getAttribute('y'))-measured.y:14));
+  const end={x:Math.max(box.x,Math.min(box.x+width,point.x)),y:Math.max(box.y,Math.min(box.y+height,point.y))};
+  const distance=Math.hypot(end.x-point.x,end.y-point.y);
+  if(distance>26){
+   const leader=document.createElementNS('http://www.w3.org/2000/svg','line');
+   for(const [key,value] of Object.entries({x1:point.x+(end.x-point.x)*10/distance,y1:point.y+(end.y-point.y)*10/distance,x2:end.x,y2:end.y,stroke:animals[+group.dataset.index].color,'stroke-width':1,'stroke-opacity':0.6,'pointer-events':'none'}))leader.setAttribute(key,value);
+   group.insertBefore(leader,group.firstChild);
+  }
+ }
+}
 function draw3D(){
  let html=`<defs><marker id="${prefix}custom-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#256b52"/></marker></defs>`;
  for(let n=-5;n<=5;n++){
@@ -75,6 +125,7 @@ function draw3D(){
  const focused=$('map').querySelector(':focus')?.dataset.index;
  $('map').innerHTML=html;
  if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`)?.focus({preventScroll:true});
+ layoutConceptLabels();
  updateEditor();
 }
 function draw(){
@@ -93,6 +144,7 @@ function draw(){
  const focused=root.contains(document.activeElement)?document.activeElement?.closest?.('.point')?.dataset.index:undefined;
  $('map').innerHTML=prefix?html.replace(/id="([^"]+)"/g,(_,id)=>`id="${prefix}${id}"`).replace(/url\(#([^)]+)\)/g,(_,id)=>`url(#${prefix}${id})`):html;
  if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`)?.focus({preventScroll:true});
+ layoutConceptLabels();
  updateEditor();
 }
 function updateEditor(){const a=animals[selected];root.querySelector('.coordinate-editor').hidden=!a;if(!a)return;$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${coords(a)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;if(explore)$('z-coordinate').value=zValue(a);root.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
@@ -252,8 +304,8 @@ guidedPanel.after(explorePanel);
 const guidedActivity=initActivity(guidedPanel),exploreActivity=initActivity(explorePanel,true);
 const tabs=[document.getElementById('guided-tab'),document.getElementById('explore-tab')];
 function activateTab(index){
- guidedActivity.cancelInteraction();exploreActivity.cancelInteraction();
  guidedPanel.hidden=index!==0;explorePanel.hidden=index!==1;
+ guidedActivity.cancelInteraction();exploreActivity.cancelInteraction();
  tabs.forEach((tab,i)=>{tab.setAttribute('aria-selected',i===index);tab.tabIndex=i===index?0:-1;});
 }
 tabs.forEach((tab,index)=>{
