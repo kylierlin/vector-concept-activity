@@ -22,6 +22,8 @@
         <p>Give each axis two endpoints. For example: small ↔ large and natural ↔ artificial.</p>
         <fieldset><legend>X · horizontal</legend><div class="axis-fields"><label>Left (−5)<input id="open-xMin" maxlength="32" placeholder="e.g. Small"></label><label>Right (+5)<input id="open-xMax" maxlength="32" placeholder="e.g. Large"></label></div></fieldset>
         <fieldset><legend>Y · vertical</legend><div class="axis-fields"><label>Bottom (−5)<input id="open-yMin" maxlength="32" placeholder="e.g. Natural"></label><label>Top (+5)<input id="open-yMax" maxlength="32" placeholder="e.g. Artificial"></label></div></fieldset>
+        <label class="dimension-toggle"><input id="third-axis" type="checkbox"> Add a third axis (3-D)</label>
+        <fieldset id="z-axis-fields" hidden><legend>Z · depth</legend><div class="axis-fields"><label>Negative (−5)<input id="open-zMin" maxlength="32" placeholder="e.g. Inexpensive"></label><label>Positive (+5)<input id="open-zMax" maxlength="32" placeholder="e.g. Expensive"></label></div></fieldset>
         <p>Place your concepts, then draw arrows to compare relationships. Changing labels leaves positions unchanged.</p>
       </div>
       <nav id="step-nav" aria-label="Activity steps"></nav>
@@ -42,7 +44,7 @@
       <aside class="controls card">
         <h2>Your drinks</h2>
         <p class="control-hint">Select a drink to inspect or move it.</p>
-        <div hidden><input id="xMin" value="Cold"><input id="xMax" value="Hot"><input id="yMin" value="No caffeine"><input id="yMax" value="More caffeine"></div>
+        <div hidden><input id="xMin" value="Cold"><input id="xMax" value="Hot"><input id="yMin" value="No caffeine"><input id="yMax" value="More caffeine"><input id="zMin"><input id="zMax"></div>
         <div id="animal-list" class="animal-list"></div>
         <form id="add-drink" class="add-drink">
           <label for="drink-name">Add your own drink</label>
@@ -50,7 +52,7 @@
           <p id="drink-help">Starts at (0, 0). Drag or use the sliders to place it.</p>
           <p id="drink-status" role="status" aria-live="polite"></p>
         </form>
-        <div class="coordinate-editor"><div><strong id="selected-name">Iced coffee</strong><span id="coordinates"></span></div><label>X <input id="x-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink X coordinate"></label><label>Y <input id="y-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink Y coordinate"></label><button id="remove-drink" type="button" class="quiet" hidden>Remove this drink</button></div>
+        <div class="coordinate-editor"><div><strong id="selected-name">Iced coffee</strong><span id="coordinates"></span></div><label>X <input id="x-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink X coordinate"></label><label>Y <input id="y-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected drink Y coordinate"></label><label id="z-coordinate-label" hidden>Z <input id="z-coordinate" type="range" min="-5" max="5" step="0.1" aria-label="Selected concept Z coordinate"></label><button id="remove-drink" type="button" class="quiet" hidden>Remove this drink</button></div>
       </aside>
       <div class="map-region">
       <section id="research-connection" class="research card" hidden aria-labelledby="research-title">
@@ -58,6 +60,7 @@
         <p>Here, drinks are vectors and arrows describe changes between them. Matching arrows illustrates how vector operations can express analogies. In <a href="https://doi.org/10.1016/j.tics.2024.06.011" target="_blank" rel="noopener noreferrer">Why concepts are (probably) vectors</a>, Piantadosi and colleagues argue that vector representations can support concepts, including structured relationships and reasoning.</p>
       </section>
       <section class="map-card card"><div class="map-heading"><div><h2>Temperature × caffeine</h2></div><button id="reset" class="quiet">Restore example ↺</button></div>
+        <div id="view-controls" class="view-controls" hidden><label>Rotate view <input id="view-angle" type="range" min="15" max="75" value="35" aria-label="Rotate 3-D view"></label><p>Drag concepts in X/Y; use the Z slider or Page Up/Down for depth. Draw on the Z = 0 plane, or select concepts to connect their full 3-D positions.</p></div>
         <div class="map-container"><svg id="map" tabindex="0" viewBox="10 20 620 600" role="group" aria-label="Interactive concept map. Select drink points and use arrow keys to move them."></svg></div>
         <div class="map-footer"><span><i class="legend-dot"></i> Drink concept</span><span class="analogy-legend"><i></i> Relationship vector</span><span>Drag to explore · arrow keys to fine-tune</span></div>
       </section>

@@ -9,11 +9,15 @@ const defaults = explore?[]:[
   {name:'Iced milk',x:-3,y:-3,color:'#d2ad43'},
   {name:'Hot milk',x:3,y:-3,color:'#b78282'}
 ];
-const axisIds=['xMin','xMax','yMin','yMax'];
+const axisIds=explore?['xMin','xMax','yMin','yMax','zMin','zMax']:['xMin','xMax','yMin','yMax'];
 const storageKey=explore?'concept-space-explore-v1':'concept-space-guided-v2';
 let animals=structuredClone(defaults), selected=0, solved=false;
 let saved;
 try { saved=JSON.parse(localStorage.getItem(storageKey)); } catch {}
+let threeD=explore && saved?.threeD===true;
+let viewAngle=35;
+const zValue=a=>Number.isFinite(a?.z)&&Math.abs(a.z)<=5?a.z:0;
+const coords=a=>[a.x,a.y,...(threeD?[zValue(a)]:[])].map(fmt).join(', ');
 const customColors=['#528b89','#9470a5','#b5774f','#7e8d40'];
 const validPosition=a=>a && Number.isFinite(a.x) && Number.isFinite(a.y) && Math.abs(a.x)<=5 && Math.abs(a.y)<=5;
 if(Array.isArray(saved?.animals)){
@@ -22,14 +26,15 @@ if(Array.isArray(saved?.animals)){
     if(!validPosition(a)||typeof a.name!=='string')continue;
     const name=a.name.trim();
     if(!name||name.length>32||animals.some(v=>v.name.toLowerCase()===name.toLowerCase()))continue;
-    animals.push({name,x:a.x,y:a.y,color:customColors[(animals.length-defaults.length)%customColors.length]});
+    animals.push({name,x:a.x,y:a.y,z:zValue(a),color:customColors[(animals.length-defaults.length)%customColors.length]});
   }
 }
-let arrows=Array.isArray(saved?.arrows)?saved.arrows.filter(a=>validPosition(a?.from)&&validPosition(a?.to)&&Math.hypot(a.to.x-a.from.x,a.to.y-a.from.y)>0).map(a=>({from:{x:a.from.x,y:a.from.y},to:{x:a.to.x,y:a.to.y}})):[];
+let arrows=Array.isArray(saved?.arrows)?saved.arrows.filter(a=>validPosition(a?.from)&&validPosition(a?.to)&&Math.hypot(a.to.x-a.from.x,a.to.y-a.from.y,zValue(a.to)-zValue(a.from))>0).map(a=>({from:{x:a.from.x,y:a.from.y,z:zValue(a.from)},to:{x:a.to.x,y:a.to.y,z:zValue(a.to)}})):[];
 let drawing=true, arrowStart=null;
 const escapeHTML = value => String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Use the activity labels even when loading an older saved map.
 Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>{$(id).value=explore?(typeof saved?.axes?.[id]==='string'?saved.axes[id].slice(0,32):''):value;});
+if(explore)for(const id of ['zMin','zMax'])$(id).value=typeof saved?.axes?.[id]==='string'?saved.axes[id].slice(0,32):'';
 let stage=Number.isInteger(saved?.stage) && saved.stage>=0 && saved.stage<=4 ? saved.stage : 0;
 $('prediction').innerHTML += animals.map(a=>`<option>${escapeHTML(a.name)}</option>`).join('');
 $('prediction').value=animals.some(a=>a.name===saved?.prediction)?saved.prediction:'';
@@ -38,11 +43,42 @@ if(explore)stage=4;else if(stage>2 && !$('prediction').value)stage=2;
 
 const fmt=n=>(Math.abs(n)<0.05?0:n).toFixed(1);
 const px=x=>80+(x+5)*48, py=y=>560-(y+5)*48;
-function snapshot(){return {arrows,stage,prediction:$('prediction').value,reason:$('reason').value,animals,axes:Object.fromEntries(axisIds.map(id=>[id,$(id).value])),...(typeof saved?.reflection==='string'?{reflection:saved.reflection}:{})};}
+function snapshot(){return {threeD,arrows,stage,prediction:$('prediction').value,reason:$('reason').value,animals,axes:Object.fromEntries(axisIds.map(id=>[id,$(id).value])),...(typeof saved?.reflection==='string'?{reflection:saved.reflection}:{})};}
 function save(){try{localStorage.setItem(storageKey,JSON.stringify(snapshot()));}catch{/* The activity also works without browser storage. */}}
 function analogy(){const a=animals[0],b=animals[1],d=animals[3];return {a,b,d,x:d.x-b.x+a.x,y:d.y-b.y+a.y};}
 function line(x1,y1,x2,y2,attributes=''){return `<line x1="${px(x1)}" y1="${py(y1)}" x2="${px(x2)}" y2="${py(y2)}" ${attributes}/>`;}
+// Orthographic projection; keep Y vertical and rotate the X/Z plane.
+// Label anchors extend beyond ±5, so projection must not apply saved-coordinate bounds.
+function project(a){const t=viewAngle*Math.PI/180,z=a.z??0;return {x:320+30*(a.x*Math.cos(t)-z*Math.sin(t)),y:320-30*(a.y+0.45*(a.x*Math.sin(t)+z*Math.cos(t)))};}
+function unproject(p,z=0){const t=viewAngle*Math.PI/180;const x=((p.x-320)/30+z*Math.sin(t))/Math.cos(t);return {x,y:(320-p.y)/30-0.45*(x*Math.sin(t)+z*Math.cos(t)),z};}
+function segment(a,b,attrs=''){const p=project(a),q=project(b);return `<line x1="${p.x}" y1="${p.y}" x2="${q.x}" y2="${q.y}" ${attrs}/>`;}
+function draw3D(){
+ let html=`<defs><marker id="${prefix}custom-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#256b52"/></marker></defs>`;
+ for(let n=-5;n<=5;n++){
+  html+=segment({x:n,y:-5,z:-5},{x:n,y:-5,z:5},'stroke="#e2e8dc"')+segment({x:-5,y:-5,z:n},{x:5,y:-5,z:n},'stroke="#e2e8dc"');
+ }
+ for(const axis of ['x','y','z']){
+  const others=['x','y','z'].filter(v=>v!==axis);
+  for(const u of [-5,5])for(const v of [-5,5])html+=segment({[axis]:-5,[others[0]]:u,[others[1]]:v},{[axis]:5,[others[0]]:u,[others[1]]:v},'stroke="#cbd5c5"');
+  const a={x:0,y:0,z:0},b={...a};a[axis]=-5;b[axis]=5;
+  html+=segment(a,b,'stroke="#71836b" stroke-width="1.8"');
+  for(const value of [-5,-3,-1,1,3,5]){const tick={x:0,y:0,z:0};tick[axis]=value;const p=project(tick);html+=`<circle cx="${p.x}" cy="${p.y}" r="2" fill="#71836b"/><text x="${p.x+5}" y="${p.y+12}" font-size="9">${value}</text>`;}
+
+  for(const sign of [-1,1]){const end={x:0,y:0,z:0};end[axis]=sign*6;const p=project(end);html+=`<text x="${p.x}" y="${p.y}" text-anchor="middle" font-size="12" font-weight="600">${axis.toUpperCase()} ${sign<0?'−':'+'}: ${escapeHTML($(axis+(sign<0?'Min':'Max')).value||String(sign*5))}</text>`;}
+ }
+ arrows.forEach((a,i)=>{const p=project({x:(a.from.x+a.to.x)/2,y:(a.from.y+a.to.y)/2,z:(zValue(a.from)+zValue(a.to))/2});html+=segment(a.from,a.to,`stroke="#256b52" stroke-width="3" marker-end="url(#${prefix}custom-arrow)"`)+`<text x="${p.x+8}" y="${p.y-8}">${i+1}</text>`;});
+ if(arrowStart){const p=project(arrowStart);html+=`<circle cx="${p.x}" cy="${p.y}" r="11" fill="none" stroke="#256b52"/><line id="${prefix}arrow-preview" x1="${p.x}" y1="${p.y}" x2="${p.x}" y2="${p.y}" stroke="#256b52" stroke-dasharray="5 4"/>`;}
+ animals.map((a,i)=>({a,i})).sort((u,v)=>(u.a.x-v.a.x)*Math.sin(viewAngle*Math.PI/180)+(zValue(u.a)-zValue(v.a))*Math.cos(viewAngle*Math.PI/180)).forEach(({a,i})=>{
+  const p=project(a);html+=segment({...a,y:-5},a,'stroke="#b9c7b2" stroke-dasharray="3 4" pointer-events="none"');
+  html+=`<g class="point" data-index="${i}" tabindex="0" role="button" aria-label="${escapeHTML(a.name)}, X ${fmt(a.x)}, Y ${fmt(a.y)}, Z ${fmt(zValue(a))}. Arrow keys move X/Y; Page Up/Down moves Z." aria-pressed="${selected===i}"><circle cx="${p.x}" cy="${p.y}" r="22" fill="transparent"/><circle class="point-ring" cx="${p.x}" cy="${p.y}" r="15" fill="none" stroke="${selected===i?a.color:'none'}"/><circle cx="${p.x}" cy="${p.y}" r="7" fill="${a.color}" stroke="white" stroke-width="2"/><text x="${p.x+13}" y="${p.y-12}">${escapeHTML(a.name)}</text></g>`;
+ });
+ const focused=$('map').querySelector(':focus')?.dataset.index;
+ $('map').innerHTML=html;
+ if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`)?.focus({preventScroll:true});
+ updateEditor();
+}
 function draw(){
+ if(threeD){draw3D();return;}
  let html='<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ca713d"/></marker><marker id="custom-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#256b52"/></marker><clipPath id="plot-clip"><rect x="80" y="80" width="480" height="480"/></clipPath></defs><rect x="80" y="80" width="480" height="480" rx="2" fill="#f6f8f2"/>';
  for(let n=-5;n<=5;n++){html+=line(n,-5,n,5,`stroke="${n===0?'#aab7a5':'#e2e8dc'}" stroke-width="${n===0?1.5:1}"`)+line(-5,n,5,n,`stroke="${n===0?'#aab7a5':'#e2e8dc'}" stroke-width="${n===0?1.5:1}"`);if(n!==0)html+=`<text x="${px(n)}" y="${py(0)+17}" text-anchor="middle" font-size="9">${n}</text><text x="${px(0)-10}" y="${py(n)+3}" text-anchor="end" font-size="9">${n}</text>`;}
  html+=`<text x="320" y="43" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('yMax').value || '+Y')}</text><text x="320" y="606" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('yMin').value || '−Y')}</text><text transform="translate(28 320) rotate(-90)" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('xMin').value || '−X')}</text><text transform="translate(612 320) rotate(90)" text-anchor="middle" font-size="13" font-weight="600">${escapeHTML($('xMax').value || '+X')}</text>`;
@@ -59,7 +95,7 @@ function draw(){
  if(focused!==undefined)$('map').querySelector(`[data-index="${focused}"]`)?.focus({preventScroll:true});
  updateEditor();
 }
-function updateEditor(){const a=animals[selected];root.querySelector('.coordinate-editor').hidden=!a;if(!a)return;$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${fmt(a.x)}, ${fmt(a.y)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;root.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
+function updateEditor(){const a=animals[selected];root.querySelector('.coordinate-editor').hidden=!a;if(!a)return;$('remove-drink').hidden=selected<defaults.length;for(const axis of ['x','y'])$(axis+'-coordinate').disabled=stage===0&&selected<defaults.length;$('selected-name').textContent=a.name;$('coordinates').textContent=`(${coords(a)})`;$('x-coordinate').value=a.x;$('y-coordinate').value=a.y;if(explore)$('z-coordinate').value=zValue(a);root.querySelectorAll('.animal-chip').forEach((b,i)=>b.setAttribute('aria-pressed',i===selected));}
 function refreshDrinkChoices(){
  for(const id of ['arrow-from','arrow-to']){const old=$(id).value;$(id).innerHTML=animals.map((a,i)=>`<option value="${i}">${escapeHTML(a.name)}</option>`).join('');$(id).value=animals[+old]?old:(id==='arrow-from'?'0':'1');if(!$(id).value)$(id).value=id==='arrow-from'?'0':'1';}
  const prediction=$('prediction').value;
@@ -74,10 +110,10 @@ $('add-drink').addEventListener('submit',e=>{
  const name=$('drink-name').value.trim();
  if(!name||name.length>32){$('drink-status').textContent='Enter a name (1–32 characters).';$('drink-name').focus();return;}
  if(animals.some(a=>a.name.toLowerCase()===name.toLowerCase())){$('drink-status').textContent='That name is already on the map. Choose a different name.';$('drink-name').focus();return;}
- animals.push({name,x:0,y:0,color:customColors[(animals.length-defaults.length)%customColors.length]});
+ animals.push({name,x:0,y:0,z:0,color:customColors[(animals.length-defaults.length)%customColors.length]});
  selected=animals.length-1;
  refreshDrinkChoices();draw();save();
- $('drink-name').value='';$('drink-status').textContent=`${name} added at (0, 0). Use the sliders to position it.`;
+ $('drink-name').value='';$('drink-status').textContent=`${name} added at (${threeD?'0, 0, 0':'0, 0'}). Use the sliders to position it.`;
  $('x-coordinate').focus();
 });
 $('remove-drink').addEventListener('click',()=>{
@@ -88,19 +124,29 @@ $('remove-drink').addEventListener('click',()=>{
  renderStage();save();$('drink-status').textContent=`${removed.name} removed.`;$('drink-name').focus();
 });
  $('animal-list').addEventListener('click',e=>{const b=e.target.closest('button');if(b){selected=+b.dataset.index;draw();}});
- for(const axis of ['x','y'])$(axis+'-coordinate').addEventListener('input',e=>{if(stage<1&&selected<defaults.length)return;animals[selected][axis]=+e.target.value;draw();save();});
+ for(const axis of (explore?['x','y','z']:['x','y']))$(axis+'-coordinate').addEventListener('input',e=>{if(stage<1&&selected<defaults.length)return;animals[selected][axis]=+e.target.value;draw();save();});
  axisIds.forEach(id=>$(id).addEventListener('input',()=>{draw();save();}));
  let dragging=null;
  $('map').addEventListener('pointerdown',e=>{if(stage===4&&drawing){if(e.button!==0)return;const pos=mapPosition(e);if(!pos)return;e.preventDefault();$('map').focus();if(!arrowStart){arrowStart=pos;$('arrow-status').textContent='Start selected. Click the end point (Esc to cancel).';}else{addArrow(arrowStart,pos);}updateArrowTools();draw();return;}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(stage<1&&selected<defaults.length){draw();return;}dragging={index:selected,id:e.pointerId};$('map').setPointerCapture(e.pointerId);draw();e.preventDefault();});
- $('map').addEventListener('pointermove',e=>{if(stage===4&&drawing&&arrowStart){const pos=mapPosition(e),preview=$('arrow-preview');if(pos&&preview){preview.setAttribute('x2',px(pos.x));preview.setAttribute('y2',py(pos.y));}return;}if(!dragging||dragging.id!==e.pointerId)return;const point=new DOMPoint(e.clientX,e.clientY).matrixTransform($('map').getScreenCTM().inverse());animals[dragging.index].x=Math.round(Math.max(-5,Math.min(5,(point.x-80)/48-5))*10)/10;animals[dragging.index].y=Math.round(Math.max(-5,Math.min(5,(560-point.y)/48-5))*10)/10;draw();});
+ $('map').addEventListener('pointermove',e=>{if(stage===4&&drawing&&arrowStart){const pos=mapPosition(e),preview=$('arrow-preview');if(pos&&preview){preview.setAttribute('x2',threeD?project(pos).x:px(pos.x));preview.setAttribute('y2',threeD?project(pos).y:py(pos.y));}return;}if(!dragging||dragging.id!==e.pointerId)return;const point=new DOMPoint(e.clientX,e.clientY).matrixTransform($('map').getScreenCTM().inverse());if(threeD){const pos=unproject(point,zValue(animals[dragging.index]));for(const axis of ['x','y'])animals[dragging.index][axis]=Math.round(Math.max(-5,Math.min(5,pos[axis]))*10)/10;draw();return;}animals[dragging.index].x=Math.round(Math.max(-5,Math.min(5,(point.x-80)/48-5))*10)/10;animals[dragging.index].y=Math.round(Math.max(-5,Math.min(5,(560-point.y)/48-5))*10)/10;draw();});
  function endDrag(){if(dragging){dragging=null;save();}}
  $('map').addEventListener('pointerup',endDrag);$('map').addEventListener('pointercancel',endDrag);$('map').addEventListener('lostpointercapture',endDrag);
- $('map').addEventListener('keydown',e=>{if(e.key==='Escape'){arrowStart=null;updateArrowTools();draw();return;}if(stage===4&&drawing&&(e.key==='Enter'||e.key===' ')){const target=e.target.closest('.point');if(target){e.preventDefault();const a=animals[+target.dataset.index];if(arrowStart)addArrow(arrowStart,a);else arrowStart={x:a.x,y:a.y};updateArrowTools();draw();return;}}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(e.key==='Enter'||e.key===' '){e.preventDefault();draw();return;}const moves={ArrowLeft:['x',-0.1],ArrowRight:['x',0.1],ArrowDown:['y',-0.1],ArrowUp:['y',0.1]};if(moves[e.key]){e.preventDefault();if(stage<1&&selected<defaults.length)return;const [axis,delta]=moves[e.key];animals[selected][axis]=Math.round(Math.max(-5,Math.min(5,animals[selected][axis]+delta))*10)/10;draw();save();}});
+ $('map').addEventListener('keydown',e=>{if(e.key==='Escape'){arrowStart=null;updateArrowTools();draw();return;}if(stage===4&&drawing&&(e.key==='Enter'||e.key===' ')){const target=e.target.closest('.point');if(target){e.preventDefault();const a=animals[+target.dataset.index];if(arrowStart)addArrow(arrowStart,a);else arrowStart={x:a.x,y:a.y,z:zValue(a)};updateArrowTools();draw();return;}}const point=e.target.closest('.point');if(!point)return;selected=+point.dataset.index;if(e.key==='Enter'||e.key===' '){e.preventDefault();draw();return;}const moves={ArrowLeft:['x',-0.1],ArrowRight:['x',0.1],ArrowDown:['y',-0.1],ArrowUp:['y',0.1]};if(threeD){moves.PageUp=['z',0.1];moves.PageDown=['z',-0.1];}if(moves[e.key]){e.preventDefault();if(stage<1&&selected<defaults.length)return;const [axis,delta]=moves[e.key];animals[selected][axis]=Math.round(Math.max(-5,Math.min(5,(animals[selected][axis]||0)+delta))*10)/10;draw();save();}});
  $('reset').addEventListener('click',()=>{animals=[...structuredClone(defaults),...animals.slice(defaults.length)];selected=0;solved=false;Object.entries({xMin:'Cold',xMax:'Hot',yMin:'No caffeine',yMax:'More caffeine'}).forEach(([id,value])=>$(id).value=value);renderStage();save();});
  if(explore){
   drawing=false;
+  function syncDimensions(){
+   $('third-axis').checked=threeD;
+   for(const id of ['z-axis-fields','z-coordinate-label','view-controls'])$(id).hidden=!threeD;
+   root.querySelector('.map-heading h2').textContent=threeD?'Your three-dimensional map':'Your two-dimensional map';
+   $('drink-help').textContent=threeD?'Starts at (0, 0, 0). Drag in X/Y; use the Z slider for depth.':'Starts at (0, 0). Drag or use the sliders to place it.';
+   $('map').setAttribute('aria-label',threeD?'Three-dimensional concept map. Arrow keys move X/Y; Page Up/Down moves Z.':'Open concept map. Arrow keys move concepts.');
+  }
+  $('third-axis').addEventListener('change',()=>{threeD=$('third-axis').checked;arrowStart=null;dragging=null;syncDimensions();$('arrow-status').textContent=threeD?'Draw on the Z = 0 plane, or choose concepts for 3-D endpoints.':'Switch to Draw arrows, then click a start and end point.';updateArrowTools();draw();save();});
+  $('view-angle').addEventListener('input',()=>{viewAngle=+$('view-angle').value;draw();});
+
   root.querySelector('h1').textContent='Your concept space';
-  root.querySelector('.lede').textContent='Choose two dimensions. Add concepts. Explore their relationships.';
+  root.querySelector('.lede').textContent='Choose two or three dimensions. Add concepts. Explore their relationships.';
   for(const id of ['step-nav','step-count','guide-title','guide-instruction','guide-task','guide-explanation','prediction-panel','research-connection'])$(id).hidden=true;
   root.querySelector('.guide-actions').hidden=true;root.querySelector('.guide').removeAttribute('aria-labelledby');root.querySelector('.guide').setAttribute('aria-label','Open exploration controls');
   $('axis-editor').hidden=false;
@@ -119,6 +165,7 @@ $('remove-drink').addEventListener('click',()=>{
   $('x-coordinate').setAttribute('aria-label','Selected concept X coordinate');
   $('y-coordinate').setAttribute('aria-label','Selected concept Y coordinate');
   $('arrow-status').textContent='Switch to Draw arrows, then click a start and end point.';
+  syncDimensions();
  }
  renderStage();save();
 
@@ -155,6 +202,14 @@ $('reason').addEventListener('input',save);
 
 function mapPosition(e){
  const p=new DOMPoint(e.clientX,e.clientY).matrixTransform($('map').getScreenCTM().inverse());
+ if(threeD){
+  const target=e.target.closest?.('.point');
+  if(target){const a=animals[+target.dataset.index];return {x:a.x,y:a.y,z:zValue(a)};}
+  const hits=animals.map(a=>({a,p:project(a)})).filter(v=>Math.hypot(v.p.x-p.x,v.p.y-p.y)<18);
+  if(hits.length){const a=hits[hits.length-1].a;return {x:a.x,y:a.y,z:zValue(a)};}
+  const pos=unproject(p);if(Math.abs(pos.x)>5||Math.abs(pos.y)>5)return null;
+  return {x:Math.round(pos.x*10)/10,y:Math.round(pos.y*10)/10,z:0};
+ }
  if(p.x<80||p.x>560||p.y<80||p.y>560)return null;
  let pos={x:Math.round(((p.x-80)/48-5)*10)/10,y:Math.round(((560-p.y)/48-5)*10)/10};
  const closest=animals.map(a=>({a,d:Math.hypot(a.x-pos.x,a.y-pos.y)})).sort((a,b)=>a.d-b.d)[0];
@@ -163,9 +218,9 @@ function mapPosition(e){
 }
 function addArrow(from,to){
  if(!from||!to){$('arrow-status').textContent='Add two concepts first, or draw directly on the map.';return;}
- if(Math.hypot(to.x-from.x,to.y-from.y)<0.05){$('arrow-status').textContent='Choose a different end point to give the arrow a direction.';return;}
- arrows.push({from:{x:from.x,y:from.y},to:{x:to.x,y:to.y}});arrowStart=null;
- $('arrow-status').textContent=`Arrow ${arrows.length} added: ΔX ${fmt(to.x-from.x)}, ΔY ${fmt(to.y-from.y)}.`;
+ if(Math.hypot(to.x-from.x,to.y-from.y,threeD?zValue(to)-zValue(from):0)<0.05){$('arrow-status').textContent='Choose a different end point to give the arrow a direction.';return;}
+ arrows.push({from:{x:from.x,y:from.y,z:threeD?zValue(from):0},to:{x:to.x,y:to.y,z:threeD?zValue(to):0}});arrowStart=null;
+ $('arrow-status').textContent=`Arrow ${arrows.length} added: ΔX ${fmt(to.x-from.x)}, ΔY ${fmt(to.y-from.y)}${threeD?`, ΔZ ${fmt(zValue(to)-zValue(from))}`:''}.`;
  updateArrowTools();draw();save();
 }
 function updateArrowTools(){
@@ -174,7 +229,7 @@ function updateArrowTools(){
  $('draw-mode').setAttribute('aria-label',drawing?'Draw arrows active. Switch to move concepts.':'Move concepts active. Switch to draw arrows.');
  $('map').classList.toggle('drawing',stage===4&&drawing);
  $('cancel-arrow').hidden=!arrowStart;$('clear-arrows').disabled=!arrows.length;
- $('arrow-list').innerHTML=arrows.map((a,i)=>`<li><span><b>${i+1}.</b> ΔX ${fmt(a.to.x-a.from.x)} · ΔY ${fmt(a.to.y-a.from.y)}<small>(${fmt(a.from.x)}, ${fmt(a.from.y)}) → (${fmt(a.to.x)}, ${fmt(a.to.y)})</small></span><button class="quiet" data-remove="${i}" aria-label="Remove arrow ${i+1}">Remove</button></li>`).join('');
+ $('arrow-list').innerHTML=arrows.map((a,i)=>`<li><span><b>${i+1}.</b> ΔX ${fmt(a.to.x-a.from.x)} · ΔY ${fmt(a.to.y-a.from.y)}${threeD?` · ΔZ ${fmt(zValue(a.to)-zValue(a.from))}`:''}<small>(${coords(a.from)}) → (${coords(a.to)})</small></span><button class="quiet" data-remove="${i}" aria-label="Remove arrow ${i+1}">Remove</button></li>`).join('');
 }
 $('draw-mode').addEventListener('click',()=>{drawing=!drawing;arrowStart=null;$('arrow-status').textContent=drawing?'Click a start point, then an end point on the map.':'Drag points to move them. Switch back to draw more arrows.';updateArrowTools();draw();});
 $('cancel-arrow').addEventListener('click',()=>{arrowStart=null;$('arrow-status').textContent='Start canceled. Click a new start point.';updateArrowTools();draw();});

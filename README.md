@@ -21,6 +21,8 @@ Relative asset paths support repository and custom-domain sites. The interface u
 
 **Open exploration** starts with an empty map. Define the negative and positive endpoints of X and Y, add your own concepts, and position them by dragging, sliders, or arrow keys. All concepts in this tab can be removed. Switch from Move concepts to Draw arrows to select two locations, or choose two concepts from the endpoint dropdowns. Arrows show ΔX and ΔY and retain their coordinates when concepts move. Renaming axes does not reposition points.
 
+Select **Add a third axis (3-D)** to define Z endpoints and display a three-dimensional map. Use **Rotate view** to inspect depth. Drag concepts to change X/Y while keeping Z fixed; use the Z slider or Page Up/Down on a focused point to change depth. Draw on the Z = 0 plane, click concepts, or choose endpoint concepts to create 3-D arrows with ΔX, ΔY, and ΔZ. Switching back to 2-D preserves Z values and labels; the dimension choice and coordinates survive reloads. Older saved maps start with Z = 0.
+
 Tabs use independent local-storage keys (`concept-space-guided-v2` and `concept-space-explore-v1`). Switching tabs preserves both maps and cancels unfinished arrow selections. Use Left/Right, Home, or End while focused on a tab to switch with the keyboard. Everything remains a static site; no additional files or services are needed for GitHub Pages.
 
 ## Classroom flow
